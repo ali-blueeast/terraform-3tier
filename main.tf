@@ -1,9 +1,8 @@
 provider "aws" {
-  shared_config_files      = ["/Users/tf_user/.aws/conf"]
-  shared_credentials_files = ["/Users/tf_user/.aws/creds"]
-  profile                  = "customprofile"
+  region     = "us-west-2"
+  access_key = "my-access-key"
+  secret_key = "my-secret-key"
 }
-
 #front-end ec2 instance
 module "ec2_instance-1" {
   source  = "terraform-aws-modules/ec2-instance/aws"
@@ -15,8 +14,9 @@ module "ec2_instance-1" {
   instance_type          = "t2.micro"
   key_name               = "user1"
   monitoring             = false
+  associate_public_ip_address = true  
   vpc_security_group_ids = [module.frontend_service_sg.security_group_id]
-  subnet_id              = aws_subnet.front-end.id
+  subnet_id = aws_subnet.front-end.id
 
   tags = {
     Terraform   = "true"
@@ -36,7 +36,7 @@ module "ec2_instance-2" {
   key_name               = "user1"
   monitoring             = false
   vpc_security_group_ids = [module.backend_service_sg.security_group_id]
-  subnet_id              = aws_subnet.back-end.id
+  subnet_id = aws_subnet.back-end.id
 
   tags = {
     Terraform   = "true"
@@ -56,7 +56,7 @@ module "ec2_instance-3" {
   key_name               = "user1"
   monitoring             = false
   vpc_security_group_ids = [module.database_service_sg.security_group_id]
-  subnet_id              = aws_subnet.database.id
+  subnet_id = aws_subnet.database.id
 
   tags = {
     Terraform   = "true"
@@ -70,9 +70,11 @@ module "ec2_instance-3" {
 module "vpc" {
   source = "terraform-aws-modules/vpc/aws"
 
-  name = "my-vpc"
-  cidr = "10.0.0.0/16"
-  azs  = ["eu-west-1a", "eu-west-1b", "eu-west-1c"]
+  name               = "my-vpc"
+  cidr               = "10.0.0.0/16"
+  azs                = ["eu-west-1a", "eu-west-1b", "eu-west-1c"]
+  enable_nat_gateway = true
+  enable_vpn_gateway = true
 
 
   tags = {
@@ -112,3 +114,37 @@ resource "aws_subnet" "database" {
   }
 
 }
+
+resource "aws_internet_gateway" "my-igw" {
+  vpc_id = module.vpc.vpc_id
+  
+
+  tags = {
+    Name = "my-igw-vpc"
+  }
+}
+
+resource "aws_route_table" "my-rt" {
+  vpc_id = module.vpc.vpc_id
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.my-igw.id
+  }
+  
+}
+
+resource "aws_route_table_association" "my-rta-frontend" {
+  route_table_id = aws_route_table.my-rt.id
+  subnet_id = aws_subnet.front-end.id 
+}
+
+resource "aws_route_table_association" "my-rta-backend" {
+  route_table_id = aws_route_table.my-rt.id
+  subnet_id = aws_subnet.back-end.id 
+}
+
+resource "aws_route_table_association" "my-rta-database" {
+  route_table_id = aws_route_table.my-rt.id
+  subnet_id = aws_subnet.database.id 
+}
+
